@@ -295,7 +295,7 @@ def get_dataloaders(
         shuffle=True,
         num_workers=num_workers,
         collate_fn=collator,
-        pin_memory=True if device == 'cuda' else False
+        pin_memory=False  # Disabled: tensors already moved to device in collator
     )
 
     val_loader = DataLoader(
@@ -304,7 +304,7 @@ def get_dataloaders(
         shuffle=False,
         num_workers=num_workers,
         collate_fn=collator,
-        pin_memory=True if device == 'cuda' else False
+        pin_memory=False  # Disabled: tensors already moved to device in collator
     )
 
     return train_loader, val_loader
