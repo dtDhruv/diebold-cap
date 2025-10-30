@@ -53,33 +53,48 @@ class GUITestDataset(Dataset):
 
     def _format_history(self, history) -> str:
         """Format action history into readable text."""
+        import re
+
         # Handle None or empty
-        if not history or history == [None]:
+        if not history or history == [None] or history == 'None':
             return "None"
 
-        # Handle string (convert to list by splitting on newlines or numbered items)
+        # Handle string (multi-line string with numbered actions)
         if isinstance(history, str):
-            # If already formatted with numbers, return as-is (after truncation)
-            if history.strip().startswith(('1.', '1 ', '•')):
-                # Split by newlines or numbered patterns
-                import re
-                actions = [line.strip() for line in history.split('\n') if line.strip()]
-                # Remove numbering if present
-                actions = [re.sub(r'^\d+\.\s*', '', action) for action in actions]
-                history = actions
+            # Split by newlines to get individual actions
+            lines = [line.strip() for line in history.split('\n') if line.strip()]
+
+            if lines:
+                # Remove existing numbering (e.g., "1. CLICK: ..." -> "CLICK: ...")
+                actions = []
+                for line in lines:
+                    # Match patterns like "1. ", "1) ", "• ", etc.
+                    cleaned = re.sub(r'^\d+[\.\)]\s*', '', line)
+                    if cleaned:  # Only add non-empty actions
+                        actions.append(cleaned)
+
+                history = actions if actions else [history]
             else:
-                # Single action as string
+                # Single action without newlines
                 history = [history]
 
-        # Handle list
+        # Handle list (already in list format)
         if isinstance(history, list):
-            # Take last N actions
+            # Filter out None/empty values
+            history = [h for h in history if h and str(h).strip() and str(h).strip() != 'None']
+
+            if not history:
+                return "None"
+
+            # Take last N actions (most recent)
             history = history[-self.max_history_length:]
+
+            # Format with numbering
             formatted = "\n".join([f"{i+1}. {action}" for i, action in enumerate(history)])
             return formatted
 
         # Fallback
-        return str(history)
+        return "None"
 
     def _construct_input_text(self, item: Dict) -> str:
         """
@@ -224,7 +239,8 @@ def get_dataloaders(
     processor=None,
     device='cuda',
     max_history_length: int = 10,
-    use_cot: bool = False
+    use_cot: bool = False,
+    val_split_ratio: float = 0.1
 ):
     """
     Create train and validation dataloaders.
@@ -236,23 +252,37 @@ def get_dataloaders(
         device: Device for tensors
         max_history_length: Max previous actions to include
         use_cot: Include chain-of-thought
+        val_split_ratio: Ratio of training data to use for validation
 
     Returns:
         train_loader, val_loader
     """
-    from torch.utils.data import DataLoader
+    from torch.utils.data import DataLoader, random_split
+    import torch
 
-    # Create datasets
-    train_dataset = GUITestDataset(
+    # Load full training dataset
+    full_dataset = GUITestDataset(
         split='train',
         max_history_length=max_history_length,
         use_cot=use_cot
     )
 
-    val_dataset = GUITestDataset(
-        split='validation',
-        max_history_length=max_history_length,
-        use_cot=use_cot
+    # Split into train and validation
+    total_size = len(full_dataset)
+    val_size = int(total_size * val_split_ratio)
+    train_size = total_size - val_size
+
+    print(f"\nSplitting dataset:")
+    print(f"  Total samples: {total_size}")
+    print(f"  Training: {train_size} ({(1-val_split_ratio)*100:.0f}%)")
+    print(f"  Validation: {val_size} ({val_split_ratio*100:.0f}%)")
+
+    # Set seed for reproducibility
+    torch.manual_seed(42)
+    train_dataset, val_dataset = random_split(
+        full_dataset,
+        [train_size, val_size],
+        generator=torch.Generator().manual_seed(42)
     )
 
     # Create collator
