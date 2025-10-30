@@ -51,16 +51,35 @@ class GUITestDataset(Dataset):
     def __len__(self) -> int:
         return len(self.dataset)
 
-    def _format_history(self, history: List[str]) -> str:
+    def _format_history(self, history) -> str:
         """Format action history into readable text."""
+        # Handle None or empty
         if not history or history == [None]:
             return "None"
 
-        # Take last N actions
-        history = history[-self.max_history_length:]
+        # Handle string (convert to list by splitting on newlines or numbered items)
+        if isinstance(history, str):
+            # If already formatted with numbers, return as-is (after truncation)
+            if history.strip().startswith(('1.', '1 ', '•')):
+                # Split by newlines or numbered patterns
+                import re
+                actions = [line.strip() for line in history.split('\n') if line.strip()]
+                # Remove numbering if present
+                actions = [re.sub(r'^\d+\.\s*', '', action) for action in actions]
+                history = actions
+            else:
+                # Single action as string
+                history = [history]
 
-        formatted = "\n".join([f"{i+1}. {action}" for i, action in enumerate(history)])
-        return formatted
+        # Handle list
+        if isinstance(history, list):
+            # Take last N actions
+            history = history[-self.max_history_length:]
+            formatted = "\n".join([f"{i+1}. {action}" for i, action in enumerate(history)])
+            return formatted
+
+        # Fallback
+        return str(history)
 
     def _construct_input_text(self, item: Dict) -> str:
         """
