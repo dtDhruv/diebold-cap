@@ -1,0 +1,105 @@
+# Training Configuration for GUI Test Automation
+
+# Model Configuration
+model:
+  name: "Salesforce/blip2-flan-t5-base"
+  freeze_vision: true
+  freeze_qformer: false
+  freeze_lm_encoder: true
+  device: "cuda"
+
+# Dataset Configuration
+data:
+  dataset_name: "SuperAGI/GUIDE"
+  max_history_length: 10
+  max_seq_length: 512
+  use_cot: false  # Use chain-of-thought
+  train_split: "train"
+  val_split: "validation"
+  test_split: "test"
+
+# DataLoader Configuration
+dataloader:
+  batch_size: 4
+  num_workers: 2
+  pin_memory: true
+  shuffle_train: true
+
+# Training Configuration
+training:
+  num_epochs: 3
+  learning_rate: 5.0e-5
+  weight_decay: 0.01
+  warmup_steps: 100
+  gradient_accumulation_steps: 4
+  max_grad_norm: 1.0
+  mixed_precision: true  # FP16
+  gradient_checkpointing: true
+
+# Optimizer Configuration
+optimizer:
+  type: "AdamW"
+  betas: [0.9, 0.999]
+  eps: 1.0e-8
+
+# Scheduler Configuration
+scheduler:
+  type: "linear_with_warmup"
+  warmup_ratio: 0.05
+
+# Generation Configuration
+generation:
+  max_length: 128
+  num_beams: 4
+  temperature: 1.0
+  top_p: 0.9
+  top_k: 50
+  repetition_penalty: 1.2
+  length_penalty: 1.0
+  early_stopping: true
+
+# Evaluation Configuration
+evaluation:
+  metrics:
+    - "exact_match"
+    - "bleu"
+    - "rouge"
+    - "action_type_accuracy"
+  eval_batch_size: 8
+  max_eval_batches: null  # null = evaluate on full dataset
+
+# Logging Configuration
+logging:
+  use_wandb: false
+  wandb_project: "gui-test-automation"
+  wandb_entity: null
+  log_interval: 10  # Log every N steps
+  save_interval: 1  # Save checkpoint every N epochs
+  output_dir: "./outputs"
+  save_total_limit: 3  # Keep only last N checkpoints
+
+# Paths
+paths:
+  output_dir: "./outputs"
+  checkpoint_dir: "./outputs/checkpoints"
+  best_model_dir: "./outputs/best_model"
+  logs_dir: "./outputs/logs"
+
+# Hardware Configuration
+hardware:
+  gpu_ids: [0]
+  distributed: false
+  fp16: true
+  bf16: false
+
+# Reproducibility
+seed: 42
+
+# Experiment Tracking
+experiment:
+  name: "gui-test-blip2-base"
+  tags:
+    - "blip2"
+    - "gui-testing"
+    - "multimodal"
+  notes: "BLIP-2 FLAN-T5-base fine-tuned on GUIDE dataset"
