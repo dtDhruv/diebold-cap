@@ -5,11 +5,7 @@ Fine-tuned BLIP-2 with FLAN-T5 for generating test steps
 
 import torch
 import torch.nn as nn
-from transformers import (
-    Blip2ForConditionalGeneration,
-    Blip2Processor,
-    AutoProcessor
-)
+from transformers import Blip2ForConditionalGeneration, Blip2Processor, AutoProcessor
 from typing import Dict, List, Optional, Tuple
 
 
@@ -47,12 +43,19 @@ class GUITestBLIP2(nn.Module):
         super().__init__()
 
         print(f"Loading BLIP-2 model: {model_name}")
+        # Keep model weights in FP32; rely on autocast + GradScaler for mixed precision.
         self.model = Blip2ForConditionalGeneration.from_pretrained(
             model_name,
-            torch_dtype=torch.float16 if device == "cuda" else torch.float32,
         )
         self.device = device
         self.model.to(device)
+
+        # Set use_cache=False to be compatible with gradient checkpointing during training
+        if hasattr(self.model, "config"):
+            try:
+                self.model.config.use_cache = False
+            except Exception:
+                pass
 
         # Load processor (handles image + text preprocessing)
         self.processor = Blip2Processor.from_pretrained(model_name)
@@ -99,7 +102,9 @@ class GUITestBLIP2(nn.Module):
         """Print number of trainable parameters."""
         trainable = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
         total = sum(p.numel() for p in self.model.parameters())
-        print(f"\nTrainable parameters: {trainable:,} / {total:,} ({trainable/total*100:.2f}%)")
+        print(
+            f"\nTrainable parameters: {trainable:,} / {total:,} ({trainable / total * 100:.2f}%)"
+        )
 
     def forward(
         self,
@@ -163,7 +168,11 @@ class GUITestBLIP2(nn.Module):
             return_tensors="pt",
             padding=True,
             truncation=True,
-        ).to(self.device, dtype=torch.float16 if self.device == "cuda" else torch.float32)
+        )
+        inputs = {
+            k: (v.to(self.device) if isinstance(v, torch.Tensor) else v)
+            for k, v in inputs.items()
+        }
 
         # Generate
         generated_ids = self.model.generate(
@@ -214,7 +223,9 @@ class GUITestBLIP2(nn.Module):
 
         for step in range(max_steps):
             # Construct prompt with current history
-            history_text = "\n".join([f"{i+1}. {action}" for i, action in enumerate(history)])
+            history_text = "\n".join(
+                [f"{i + 1}. {action}" for i, action in enumerate(history)]
+            )
             if not history_text:
                 history_text = "None"
 
@@ -223,7 +234,7 @@ class GUITestBLIP2(nn.Module):
 Previous steps:
 {history_text}
 
-Current action: {history[-1] if history else 'None'}
+Current action: {history[-1] if history else "None"}
 
 Predict the next action:"""
 
@@ -241,11 +252,13 @@ Predict the next action:"""
                 break
 
             # Add to sequence
-            sequence.append({
-                "step_num": step + 1,
-                "action": next_action,
-                "prompt": prompt,
-            })
+            sequence.append(
+                {
+                    "step_num": step + 1,
+                    "action": next_action,
+                    "prompt": prompt,
+                }
+            )
 
             # Update history
             history.append(next_action)
@@ -310,7 +323,9 @@ if __name__ == "__main__":
     response = requests.get(url)
     test_image = Image.open(BytesIO(response.content))
 
-    prompt = "Task: Click the login button\nPrevious steps:\nNone\nPredict the next action:"
+    prompt = (
+        "Task: Click the login button\nPrevious steps:\nNone\nPredict the next action:"
+    )
 
     print("\nGenerating test prediction...")
     result = model.generate([test_image], [prompt], max_length=50)
